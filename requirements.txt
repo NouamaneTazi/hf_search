@@ -1,3 +1,4 @@
 huggingface_hub==0.4.0
 requests
 tqdm
+rank_bm25

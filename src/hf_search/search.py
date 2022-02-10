@@ -9,9 +9,13 @@ from tqdm.autonotebook import tqdm
 import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer, CrossEncoder, util
+import os
 
-PASSAGES_PATH = "proc_data/passages.jsonl"
+PASSAGES_PATH = "proc_data/passages.jsonl" # TODO: better paths
 MODELS_PATH = "proc_data/models.jsonl"
+assert os.path.exists(PASSAGES_PATH), "Passages file not found at {}".format(PASSAGES_PATH)
+assert os.path.exists(MODELS_PATH), "Models file not found at {}".format(MODELS_PATH)
+
 models_df = pd.read_json(MODELS_PATH, lines=True)
 passages_df = pd.read_json(PASSAGES_PATH, lines=True)
 models_df = models_df.reset_index().rename(columns={'index': 'id'})
@@ -19,6 +23,7 @@ models_df = passages_df[["id", "passage"]].merge(models_df, on='id', how='left')
 passages = passages_df["passage"].values.tolist()
 
 EMBEDDING_PATH = "embeddings/multi-qa-MiniLM-L6-cos-v1-embeddings.pkl"
+assert os.path.exists(EMBEDDING_PATH), "Embedding file not found at {}".format(EMBEDDING_PATH)
 corpus_embeddings = joblib.load(EMBEDDING_PATH)
 
 #We use the Bi-Encoder to encode all passages, so that we can use it with sematic search

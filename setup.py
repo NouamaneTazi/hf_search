@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="hf_search",
-    version="0.1",
+    version="0.2",
     package_dir={"": "src"},
     packages=find_packages("src"),
     url="https://github.com/nouamanetazi/hf_search",

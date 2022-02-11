@@ -13,7 +13,6 @@ setup(
     description="hf semantic search",
     install_requires=[
         "huggingface_hub==0.4.0",
-        "joblib",
         "numpy",
         "pandas",
         "rank_bm25",

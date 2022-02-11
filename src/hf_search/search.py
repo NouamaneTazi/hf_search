@@ -1,4 +1,4 @@
-import joblib
+import torch
 from rank_bm25 import BM25Okapi
 from sklearn.feature_extraction import _stop_words
 import string
@@ -9,7 +9,7 @@ import os
 
 MODELS_PATH = "proc_data/models.jsonl"
 PASSAGES_PATH = "proc_data/passages.jsonl"  # TODO: better paths
-EMBEDDING_PATH = "embeddings/multi-qa-MiniLM-L6-cos-v1-embeddings.pkl" # NOTE: embeddings and passages are linked
+EMBEDDING_PATH = "embeddings/multi-qa-MiniLM-L6-cos-v1-embeddings.pt" # NOTE: embeddings and passages are linked
 assert os.path.exists(PASSAGES_PATH), "Passages file not found at {}".format(PASSAGES_PATH)
 assert os.path.exists(MODELS_PATH), "Models file not found at {}".format(MODELS_PATH)
 assert os.path.exists(EMBEDDING_PATH), "Embedding file not found at {}".format(EMBEDDING_PATH)
@@ -20,7 +20,7 @@ models_df = models_df.reset_index().rename(columns={"index": "id"})
 models_df = passages_df[["id", "passage"]].merge(models_df, on="id", how="left").drop(columns=["id"])
 passages = passages_df["passage"].values.tolist()
 
-corpus_embeddings = joblib.load(EMBEDDING_PATH)
+corpus_embeddings = torch.load(EMBEDDING_PATH, map_location=torch.device('cpu'))
 
 # We use the Bi-Encoder to encode all passages, so that we can use it with sematic search
 bi_encoder = SentenceTransformer("multi-qa-MiniLM-L6-cos-v1")
@@ -105,7 +105,8 @@ def search(query, method="bm25", limit=3, verbose=False, filters={}):
 
     # Encode the query using the bi-encoder and find potentially relevant passages
     question_embedding = bi_encoder.encode(query, convert_to_tensor=True, show_progress_bar=False)
-    question_embedding = question_embedding.cuda()
+    if torch.cuda.is_available():
+        question_embedding = question_embedding.cuda()
     hits = util.semantic_search(question_embedding, filt_corpus_embeddings, top_k=top_k)
     hits = hits[0]  # Get the hits for the first query
     hits = [{**filt_models_df.iloc[hit["corpus_id"]].to_dict(), "score": hit["score"]} for hit in hits]

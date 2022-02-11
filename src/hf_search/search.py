@@ -1,4 +1,5 @@
 import warnings
+
 warnings.filterwarnings("ignore")
 
 import joblib
@@ -11,28 +12,28 @@ import pandas as pd
 from sentence_transformers import SentenceTransformer, CrossEncoder, util
 import os
 
-PASSAGES_PATH = "proc_data/passages.jsonl" # TODO: better paths
 MODELS_PATH = "proc_data/models.jsonl"
+PASSAGES_PATH = "proc_data/passages.jsonl"  # TODO: better paths
+EMBEDDING_PATH = "embeddings/multi-qa-MiniLM-L6-cos-v1-embeddings.pkl" # NOTE: embeddings and passages are linked
 assert os.path.exists(PASSAGES_PATH), "Passages file not found at {}".format(PASSAGES_PATH)
 assert os.path.exists(MODELS_PATH), "Models file not found at {}".format(MODELS_PATH)
+assert os.path.exists(EMBEDDING_PATH), "Embedding file not found at {}".format(EMBEDDING_PATH)
 
 models_df = pd.read_json(MODELS_PATH, lines=True)
 passages_df = pd.read_json(PASSAGES_PATH, lines=True)
-models_df = models_df.reset_index().rename(columns={'index': 'id'})
-models_df = passages_df[["id", "passage"]].merge(models_df, on='id', how='left').drop(columns=["id"])
+models_df = models_df.reset_index().rename(columns={"index": "id"})
+models_df = passages_df[["id", "passage"]].merge(models_df, on="id", how="left").drop(columns=["id"])
 passages = passages_df["passage"].values.tolist()
 
-EMBEDDING_PATH = "embeddings/multi-qa-MiniLM-L6-cos-v1-embeddings.pkl"
-assert os.path.exists(EMBEDDING_PATH), "Embedding file not found at {}".format(EMBEDDING_PATH)
 corpus_embeddings = joblib.load(EMBEDDING_PATH)
 
-#We use the Bi-Encoder to encode all passages, so that we can use it with sematic search
-bi_encoder = SentenceTransformer('multi-qa-MiniLM-L6-cos-v1')
-bi_encoder.max_seq_length = 256     #Truncate long passages to 256 tokens
-top_k = 32                          #Number of passages we want to retrieve with the bi-encoder
+# We use the Bi-Encoder to encode all passages, so that we can use it with sematic search
+bi_encoder = SentenceTransformer("multi-qa-MiniLM-L6-cos-v1")
+bi_encoder.max_seq_length = 256  # Truncate long passages to 256 tokens
+top_k = 32  # Number of passages we want to retrieve with the bi-encoder
 
-#The bi-encoder will retrieve 32 documents. We use a cross-encoder, to re-rank the results list to improve the quality
-cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+# The bi-encoder will retrieve 32 documents. We use a cross-encoder, to re-rank the results list to improve the quality
+cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
 # We lower case our text and remove stop-words from indexing
 def bm25_tokenizer(text):
@@ -44,6 +45,7 @@ def bm25_tokenizer(text):
             tokenized_doc.append(token)
     return tokenized_doc
 
+
 tokenized_corpus = []
 for passage in passages:
     tokenized_corpus.append(bm25_tokenizer(passage))
@@ -51,24 +53,34 @@ for passage in passages:
 bm25 = BM25Okapi(tokenized_corpus)
 
 # This function will search all huggingface models which answer the query
-def search(query, method="bm25", limit=3, verbose=False):
-    """ Search for a query in the huggingface models.
+def search(query, method="bm25", limit=3, verbose=False, filters={}):
+    """Search for a query in the huggingface models.
 
     Args:
         query (str): The query to search for.
         method (str): The method to use for search.
         limit (int): The number of results to return.
         verbose (bool): Whether to print the results.
+        filters (dict): A dictionary of filters to apply to the results.
 
     Returns:
         A list of results.
     """
-    assert method in ["bm25", "retrieve", "retrieve & rerank"], "Method must be one of 'bm25', 'retrieve' or 'retrieve & rerank'"
+    assert method in [
+        "bm25",
+        "retrieve",
+        "retrieve & rerank",
+    ], "Method must be one of 'bm25', 'retrieve' or 'retrieve & rerank'"
+    assert isinstance(filters, dict), "Filters must be a dictionary"
 
-    if verbose: print("Input question:", query)
+    if verbose:
+        print("Input question:", query)
 
     ##### BM25 search (lexical search) #####
     if method == "bm25":
+        if len(filters) > 0:
+            warnings.warn("Filters are not supported for bm25 search")
+
         bm25_scores = bm25.get_scores(bm25_tokenizer(query))
         top_n = np.argpartition(bm25_scores, -5)[-5:]
         bm25_hits = [{**models_df.iloc[idx].to_dict(), "score": bm25_scores[idx]} for idx in top_n]
@@ -82,12 +94,26 @@ def search(query, method="bm25", limit=3, verbose=False):
         return bm25_hits
 
     ##### Semantic Search #####
+    # filter corpus_embeddings by filters
+    filters = {"pipeline_tag": filters.get("task", []), "library_name": filters.get("library", [])}
+    filters = {k: v for k, v in filters.items() if v is not None and len(v) > 0}
+    if verbose:
+        print("Filters:", filters)
+    filt_models_df = models_df[models_df.apply(lambda x: all([x[k] in v for k, v in filters.items()]), axis=1)]
+    filt_corpus_embeddings = corpus_embeddings[filt_models_df.index.values, :]
+    filt_models_df = filt_models_df.reset_index().drop(columns=["index"])
+
+    if len(filt_models_df) == 0:
+        if verbose:
+            print("No models match the filters")
+        return []
+
     # Encode the query using the bi-encoder and find potentially relevant passages
     question_embedding = bi_encoder.encode(query, convert_to_tensor=True)
     question_embedding = question_embedding.cuda()
-    hits = util.semantic_search(question_embedding, corpus_embeddings, top_k=top_k)
+    hits = util.semantic_search(question_embedding, filt_corpus_embeddings, top_k=top_k)
     hits = hits[0]  # Get the hits for the first query
-    hits = [{**models_df.iloc[hit["corpus_id"]].to_dict(), "score": hit["score"]} for hit in hits]
+    hits = [{**filt_models_df.iloc[hit["corpus_id"]].to_dict(), "score": hit["score"]} for hit in hits]
 
     if method == "retrieve":
         # Output of top-5 hits from bi-encoder
@@ -116,13 +142,14 @@ def search(query, method="bm25", limit=3, verbose=False):
             print("\n-------------------------\n")
             print("Top-limit Cross-Encoder Re-ranker hits")
             for hit in hits[0:limit]:
-                print("\t{:.3f}\t{}".format(hit['score'], hit["passage"].replace("\n", " ")))
+                print("\t{:.3f}\t{}".format(hit["score"], hit["passage"].replace("\n", " ")))
         reranker_hits = hits[0:limit]
         return reranker_hits
 
+
 if __name__ == "__main__":
-    search(query="model that detects birds", method="retrieve", limit=3, verbose=True)
-    search(query="model that detects birds", method="bm25", limit=3, verbose=True)
-    search(query="model that detects birds", method="retrieve & rerank", limit=3, verbose=True)
-
-
+    # search(query="model that detects birds", method="retrieve", limit=3, verbose=True)
+    # search(query="model that detects birds", method="bm25", limit=3, verbose=True)
+    # search(query="model that detects birds", method="retrieve & rerank", limit=3, verbose=True, filters={"task": "question-answering", "library_name": "transformers"})
+    # search(query="model that detects birds", method="retrieve & rerank", limit=3, verbose=True, filters={"library_name": "transformerzzs"})
+    search(query="bert", method="retrieve & rerank", limit=3, verbose=True, filters={'library': [], 'task': []})

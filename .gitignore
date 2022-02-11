@@ -1,5 +1,6 @@
 models
 proc_data
+hf_data
 embeddings
 
 # Byte-compiled / optimized / DLL files

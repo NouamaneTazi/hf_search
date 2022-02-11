@@ -1,1 +1,1 @@
-from .search import search as hf_search
+from .search import HFSearch

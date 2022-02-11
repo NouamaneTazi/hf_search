@@ -7,9 +7,6 @@ from huggingface_hub import HfApi, ModelFilter, ModelSearchArguments
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
-import requests
-import time
 import random
 
 num_workers = 40

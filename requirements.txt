@@ -1,5 +1,9 @@
 huggingface_hub==0.4.0
-requests
-tqdm
+joblib
+numpy
+pandas
 rank_bm25
+scikit_learn
 sentence_transformers
+setuptools
+tqdm

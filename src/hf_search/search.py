@@ -1,12 +1,7 @@
-import warnings
-
-warnings.filterwarnings("ignore")
-
 import joblib
 from rank_bm25 import BM25Okapi
 from sklearn.feature_extraction import _stop_words
 import string
-from tqdm.autonotebook import tqdm
 import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer, CrossEncoder, util
@@ -109,7 +104,7 @@ def search(query, method="bm25", limit=3, verbose=False, filters={}):
         return []
 
     # Encode the query using the bi-encoder and find potentially relevant passages
-    question_embedding = bi_encoder.encode(query, convert_to_tensor=True)
+    question_embedding = bi_encoder.encode(query, convert_to_tensor=True, show_progress_bar=False)
     question_embedding = question_embedding.cuda()
     hits = util.semantic_search(question_embedding, filt_corpus_embeddings, top_k=top_k)
     hits = hits[0]  # Get the hits for the first query
@@ -150,6 +145,6 @@ def search(query, method="bm25", limit=3, verbose=False, filters={}):
 if __name__ == "__main__":
     # search(query="model that detects birds", method="retrieve", limit=3, verbose=True)
     # search(query="model that detects birds", method="bm25", limit=3, verbose=True)
-    # search(query="model that detects birds", method="retrieve & rerank", limit=3, verbose=True, filters={"task": "question-answering", "library_name": "transformers"})
-    # search(query="model that detects birds", method="retrieve & rerank", limit=3, verbose=True, filters={"library_name": "transformerzzs"})
+    # search(query="model that detects birds", method="retrieve & rerank", limit=3, verbose=True, filters={"task": ["question-answering"], "library_name": ["transformers"]})
+    # search(query="model that detects birds", method="retrieve & rerank", limit=3, verbose=True, filters={"library_name": ["transformerzzs"]})
     search(query="bert", method="retrieve & rerank", limit=3, verbose=True, filters={'library': [], 'task': []})

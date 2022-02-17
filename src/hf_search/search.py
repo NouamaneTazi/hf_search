@@ -52,15 +52,21 @@ class HFSearch:
         self.bm25 = BM25Okapi(tokenized_corpus)
 
     # This function will search all huggingface models which answer the query
-    def search(self, query, method="bm25", limit=3, filters={}, verbose=False):
+    def search(self, query, method="retrieve & rerank", limit=3, filters={}, sort=None, direction=None, verbose=False):
         """Search for a query in the huggingface models.
 
         Args:
             query (str): The query to search for.
             method (str): The method to use for search.
             limit (int): The number of results to return.
-            verbose (bool): Whether to print the results.
             filters (dict): A dictionary of filters to apply to the results.
+            sort (str):
+                The key with which to sort the resulting models. Possible values are the properties of the `ModelInfo`
+                class.
+            direction (str):
+                Direction in which to sort. The value `ascending` sorts by ascending order while all other values
+                sort by descending order.
+            verbose (bool): Whether to print the results.
 
         Usage:
             >>> search("bert", method="retrieve & rerank", limit=10, filters={"task["question-answering", "fill-mask"], "library_name": ["transformers"]})
@@ -74,6 +80,11 @@ class HFSearch:
             "retrieve & rerank",
         ], "Method must be one of 'bm25', 'retrieve' or 'retrieve & rerank'"
         assert isinstance(filters, dict), "Filters must be a dictionary"
+        assert sort in [
+            None,
+            "lastModified",
+            "likes",
+            "downloads"], "Sort must be one of None, 'lastModified', 'likes' or 'downloads'"
 
         if verbose:
             print("Input question:", query)
@@ -86,7 +97,7 @@ class HFSearch:
             bm25_scores = self.bm25.get_scores(self._bm25_tokenizer(query))
             top_n = np.argpartition(bm25_scores, -5)[-5:]
             bm25_hits = [{**self.models_df.iloc[idx].to_dict(), "score": bm25_scores[idx]} for idx in top_n]
-            bm25_hits = sorted(bm25_hits, key=lambda x: x["score"], reverse=True)
+            bm25_hits = self._sort_hits(bm25_hits, sort, direction)
             if verbose:
                 print("\n-------------------------\n")
                 print("Top-limit lexical search (BM25) hits")
@@ -122,7 +133,7 @@ class HFSearch:
 
         if method == "retrieve":
             # Output of top-5 hits from bi-encoder
-            hits = sorted(hits, key=lambda x: x["score"], reverse=True)
+            hits = self._sort_hits(hits, sort, direction)
             if verbose:
                 print("\n-------------------------\n")
                 print("Top-limit Bi-Encoder Retrieval hits")
@@ -142,7 +153,7 @@ class HFSearch:
                 hits[idx]["score"] = cross_scores[idx]
 
             # Output of top-5 hits from re-ranker
-            hits = sorted(hits, key=lambda x: x["score"], reverse=True)
+            hits = self._sort_hits(hits, sort, direction)
             if verbose:
                 print("\n-------------------------\n")
                 print("Top-limit Cross-Encoder Re-ranker hits")
@@ -161,3 +172,16 @@ class HFSearch:
             if len(token) > 0 and token not in _stop_words.ENGLISH_STOP_WORDS:
                 tokenized_doc.append(token)
         return tokenized_doc
+
+    @staticmethod
+    def _sort_hits(hits, sort, direction):
+        """Sort hits by the given sort and direction"""
+        if sort is None:
+            hits = sorted(hits, key=lambda x: x["score"], reverse=direction != "ascending")
+        elif sort == "lastModified":
+            hits = sorted(hits, key=lambda x: x["lastModified"], reverse=direction != "ascending")
+        elif sort == "likes":
+            hits = sorted(hits, key=lambda x: x["likes"], reverse=direction != "ascending")
+        elif sort == "downloads":
+            hits = sorted(hits, key=lambda x: x["downloads"], reverse=direction != "ascending")
+        return hits

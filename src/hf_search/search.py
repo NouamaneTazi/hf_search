@@ -52,7 +52,7 @@ class HFSearch:
         self.bm25 = BM25Okapi(tokenized_corpus)
 
     # This function will search all huggingface models which answer the query
-    def search(self, query, method="bm25", limit=3, filters={}, sort=None, direction=None, verbose=False):
+    def search(self, query, method="retrieve & rerank", limit=3, filters={}, sort=None, direction=None, verbose=False):
         """Search for a query in the huggingface models.
 
         Args:
@@ -63,8 +63,8 @@ class HFSearch:
             sort (str):
                 The key with which to sort the resulting models. Possible values are the properties of the `ModelInfo`
                 class.
-            direction (:obj:`Literal[1]` or :obj:`int`):
-                Direction in which to sort. The value `1` sorts by ascending order while all other values
+            direction (str):
+                Direction in which to sort. The value `ascending` sorts by ascending order while all other values
                 sort by descending order.
             verbose (bool): Whether to print the results.
 
@@ -177,11 +177,11 @@ class HFSearch:
     def _sort_hits(hits, sort, direction):
         """Sort hits by the given sort and direction"""
         if sort is None:
-            hits = sorted(hits, key=lambda x: x["score"], reverse=direction != 1)
+            hits = sorted(hits, key=lambda x: x["score"], reverse=direction != "ascending")
         elif sort == "lastModified":
-            hits = sorted(hits, key=lambda x: x["lastModified"], reverse=direction != 1)
+            hits = sorted(hits, key=lambda x: x["lastModified"], reverse=direction != "ascending")
         elif sort == "likes":
-            hits = sorted(hits, key=lambda x: x["likes"], reverse=direction != 1)
+            hits = sorted(hits, key=lambda x: x["likes"], reverse=direction != "ascending")
         elif sort == "downloads":
-            hits = sorted(hits, key=lambda x: x["downloads"], reverse=direction != 1)
+            hits = sorted(hits, key=lambda x: x["downloads"], reverse=direction != "ascending")
         return hits
